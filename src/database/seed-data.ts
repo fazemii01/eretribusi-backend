@@ -87,11 +87,13 @@ export async function seedInitialData(dataSource: DataSource) {
     .createQueryBuilder('p')
     .where('p.id_pelanggan NOT LIKE :prefix', { prefix: 'LMJ-%' })
     .getCount();
-
   const totalCount = await pelangganRepo.count();
+  const invoiceCount = await dataSource.getRepository(Invoice).count();
 
-  if (oldFormatCount > 0 || totalCount === 0) {
-    console.log(`Found ${oldFormatCount} old non-LMJ records. Clearing database and re-seeding 1,050 records...`);
+  const isNeedsSeeding = oldFormatCount > 0 || totalCount < 1000 || invoiceCount === 0;
+
+  if (isNeedsSeeding) {
+    console.log(`Clearing database and re-seeding full 1,050 records with invoices...`);
     try {
       await dataSource.query('SET FOREIGN_KEY_CHECKS = 0');
       await dataSource.query('DELETE FROM data_pembayaran');
