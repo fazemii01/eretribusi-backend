@@ -1,0 +1,13 @@
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { Tarif } from '../../entities/tarif.entity';
+import { TarifService } from './tarif.service';
+import { TarifController } from './tarif.controller';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([Tarif])],
+  providers: [TarifService],
+  controllers: [TarifController],
+  exports: [TarifService],
+})
+export class TarifModule {}
