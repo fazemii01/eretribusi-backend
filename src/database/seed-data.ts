@@ -81,12 +81,32 @@ export async function seedInitialData(dataSource: DataSource) {
     console.log('Seeded Data Pengaturan');
   }
 
-  // 5. Data Pelanggan (Mass Seeding 1,000+ Records Across 7 Kelurahan)
+  // 5. Data Pelanggan (Mass Seeding 1,050 Records Across 7 Kelurahan)
   const pelangganRepo = dataSource.getRepository(Pelanggan);
-  const pelangganCount = await pelangganRepo.count();
+  const oldFormatCount = await pelangganRepo
+    .createQueryBuilder('p')
+    .where('p.id_pelanggan NOT LIKE :prefix', { prefix: 'LMJ-%' })
+    .getCount();
 
-  if (pelangganCount === 0) {
-    console.log('Seeding 1,050 Data Pelanggan for all 7 Kelurahan...');
+  const totalCount = await pelangganRepo.count();
+
+  if (oldFormatCount > 0 || totalCount === 0) {
+    console.log(`Found ${oldFormatCount} old non-LMJ records. Clearing database and re-seeding 1,050 records...`);
+    try {
+      await dataSource.query('SET FOREIGN_KEY_CHECKS = 0');
+      await dataSource.query('DELETE FROM data_pembayaran');
+      await dataSource.query('DELETE FROM data_invoice');
+      await dataSource.query('DELETE FROM data_pelanggan');
+      await dataSource.query('SET FOREIGN_KEY_CHECKS = 1');
+    } catch (err) {
+      try {
+        await dataSource.query('TRUNCATE TABLE data_pembayaran, data_invoice, data_pelanggan CASCADE');
+      } catch (e) {
+        await dataSource.query('DELETE FROM data_invoice');
+        await dataSource.query('DELETE FROM data_pelanggan');
+      }
+    }
+    console.log('Seeding 1,050 Data Pelanggan in LMJ-{KEL}-{SEQ} format...');
 
     const kelurahanList = [
       { code: 'JGY', nama: 'Jogoyudan' },
@@ -156,19 +176,34 @@ export async function seedInitialData(dataSource: DataSource) {
             );
 
             overallSeq++;
+            kelSeq++;
           }
         }
       }
     }
 
-    // Save in batches of 200
-    for (let i = 0; i < pelangganList.length; i += 200) {
-      await pelangganRepo.save(pelangganList.slice(i, i + 200));
-    }
-    for (let i = 0; i < invoiceList.length; i += 200) {
-      await dataSource.getRepository(Invoice).save(invoiceList.slice(i, i + 200));
+    console.log(`Prepared ${pelangganList.length} Pelanggan records to insert...`);
+
+    // Insert in batches of 100 with individual batch error logging
+    for (let i = 0; i < pelangganList.length; i += 100) {
+      const batch = pelangganList.slice(i, i + 100);
+      try {
+        await pelangganRepo.insert(batch);
+      } catch (err) {
+        console.error(`Error inserting Pelanggan batch at index ${i}:`, err.message || err);
+      }
     }
 
-    console.log(`Seeded ${pelangganList.length} Pelanggan & ${invoiceList.length} Invoices successfully!`);
+    for (let i = 0; i < invoiceList.length; i += 100) {
+      const batch = invoiceList.slice(i, i + 100);
+      try {
+        await dataSource.getRepository(Invoice).insert(batch);
+      } catch (err) {
+        console.error(`Error inserting Invoice batch at index ${i}:`, err.message || err);
+      }
+    }
+
+    const finalCount = await pelangganRepo.count();
+    console.log(`Seeding complete. Total Pelanggan in database: ${finalCount}`);
   }
 }

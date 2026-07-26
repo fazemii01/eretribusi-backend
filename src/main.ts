@@ -11,7 +11,7 @@ async function bootstrap() {
     const dataSource = app.get(DataSource);
     await seedInitialData(dataSource);
   } catch (err) {
-    console.warn('Seeder warning:', err.message);
+    console.error('Seeder error details:', err);
   }
 
   const port = process.env.PORT ?? 3000;
