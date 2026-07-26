@@ -85,60 +85,55 @@ export async function seedInitialData(dataSource: DataSource) {
   const pelangganRepo = dataSource.getRepository(Pelanggan);
   const pelangganCount = await pelangganRepo.count();
 
-  if (pelangganCount < 10) {
+  if (pelangganCount === 0) {
     console.log('Seeding 1,050 Data Pelanggan for all 7 Kelurahan...');
 
-    const kelMap = [
-      { kode: 'JGY', nama: 'Jogoyudan', street: 'Jl. Mawar' },
-      { kode: 'JGT', nama: 'Jogotrunan', street: 'Jl. Melati' },
-      { kode: 'RGT', nama: 'Rogotrunan', street: 'Jl. Dahlia' },
-      { kode: 'CTR', nama: 'Citrodiwangsan', street: 'Jl. Gajah Mada' },
-      { kode: 'TMP', nama: 'Tompokersan', street: 'Jl. Ahmad Yani' },
-      { kode: 'KPH', nama: 'Kepuharjo', street: 'Jl. HOS Cokroaminoto' },
-      { kode: 'DTR', nama: 'Ditotrunan', street: 'Jl. Veteran' },
+    const kelurahanList = [
+      { code: 'JGY', nama: 'Jogoyudan' },
+      { code: 'JGT', nama: 'Jogotrunan' },
+      { code: 'RGT', nama: 'Rogotrunan' },
+      { code: 'CTR', nama: 'Citrodiwangsan' },
+      { code: 'TMP', nama: 'Tompokersan' },
+      { code: 'KPH', nama: 'Kepuharjo' },
+      { code: 'DTR', nama: 'Ditotrunan' },
     ];
-
-    const sampleFirstNames = ['Budi', 'Siti', 'Agus', 'Dewi', 'Eko', 'Rina', 'Joko', 'Sri', 'Bambang', 'Heni', 'Hadi', 'Lilis', 'Dedi', 'Yuni', 'Supardi', 'Neneng', 'Slamet', 'Titin'];
-    const sampleLastNames = ['Santoso', 'Aminah', 'Setiawan', 'Lestari', 'Prasetyo', 'Wati', 'Susilo', 'Rahayu', 'Hidayat', 'Mulyani', 'Kusuma', 'Utami', 'Firmansyah', 'Suryani'];
-    const vaOptions = [450, 900, 1300, 2200];
+    const streetNames = ['Jl. Trunojoyo', 'Jl. Ahmad Yani', 'Jl. Gajah Mada', 'Jl. Diponegoro', 'Jl. Veteran', 'Jl. Sukarno Hatta', 'Jl. Pahlawan'];
+    const sampleNames = ['Budi Santoso', 'Siti Aminah', 'Agus Setiawan', 'Rina Wijaya', 'Eko Prasetyo', 'Hendra Kusuma', 'Dewi Lestari', 'Bambang Utomo', 'Sri Wahyuni', 'Dedi Supriadi'];
 
     const pelangganList: Pelanggan[] = [];
     const invoiceList: Invoice[] = [];
+    let overallSeq = 1;
 
-    let totalSeq = 1;
-
-    for (const kel of kelMap) {
-      for (let rw = 1; rw <= 5; rw++) {
-        for (let rt = 1; rt <= 6; rt++) {
-          for (let count = 1; count <= 5; count++) {
-            const rtStr = rt.toString().padStart(2, '0');
-            const rwStr = rw.toString().padStart(2, '0');
-            const seqStr = totalSeq.toString().padStart(3, '0');
-            const idPelanggan = `${kel.kode}${rwStr}${rtStr}${seqStr}`;
-
-            const fn = sampleFirstNames[(totalSeq * 3) % sampleFirstNames.length];
-            const ln = sampleLastNames[(totalSeq * 7) % sampleLastNames.length];
-            const nama = `${fn} ${ln}`;
-            const va = vaOptions[totalSeq % vaOptions.length];
+    for (const kel of kelurahanList) {
+      let kelSeq = 1;
+      for (let rwNum = 1; rwNum <= 7; rwNum++) {
+        for (let rtNum = 1; rtNum <= 5; rtNum++) {
+          for (let c = 1; c <= 6; c++) {
+            const seqStr = ('000' + kelSeq).slice(-4);
+            const idPelanggan = `LMJ-${kel.code}-${seqStr}`;
+            const nama = `${sampleNames[(overallSeq - 1) % sampleNames.length]} (${overallSeq})`;
+            const street = streetNames[(overallSeq - 1) % streetNames.length];
+            const rt = ('0' + rtNum).slice(-2);
+            const rw = ('0' + rwNum).slice(-2);
+            const va = [450, 900, 1300, 2200][(overallSeq - 1) % 4];
 
             const p = pelangganRepo.create({
               id_pelanggan: idPelanggan,
               nama,
-              alamat: `${kel.street} No. ${count * 3}`,
-              rt: rtStr,
-              rw: rwStr,
+              alamat: `${street} No. ${(c * 3) + rwNum}`,
+              rt,
+              rw,
               kelurahan: kel.nama,
               kecamatan: 'Lumajang',
               va,
+              no_hp: `6281234${('00000' + overallSeq).slice(-5)}`,
             });
-
             pelangganList.push(p);
 
-            // Generate Invoices for Maret 2026 and Februari 2026
             const nominalMap: Record<number, number> = { 450: 10000, 900: 15000, 1300: 25000, 2200: 35000 };
             const nominal = nominalMap[va] || 15000;
 
-            const invMaret = invoiceList.push(
+            invoiceList.push(
               dataSource.getRepository(Invoice).create({
                 id_invoice: `INV-2603-${idPelanggan}`,
                 id_pelanggan: idPelanggan,
