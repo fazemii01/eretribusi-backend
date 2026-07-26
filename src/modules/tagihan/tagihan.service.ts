@@ -66,6 +66,89 @@ export class TagihanService {
     return Array.from(yearsSet).sort().reverse();
   }
 
+  async getDashboardStats(tahun: string = '2026') {
+    const totalPelanggan = await this.pelangganRepo.count();
+    const invoices = await this.invoiceRepo.find({
+      where: { bulan: Like(`%${tahun}%`) },
+    });
+
+    let totalLunas = 0;
+    let totalTunggakan = 0;
+    let paidInvoicesCount = 0;
+
+    const monthlyStats: Record<string, { lunas: number; tunggakan: number }> = {
+      Jan: { lunas: 0, tunggakan: 0 },
+      Feb: { lunas: 0, tunggakan: 0 },
+      Mar: { lunas: 0, tunggakan: 0 },
+      Apr: { lunas: 0, tunggakan: 0 },
+      Mei: { lunas: 0, tunggakan: 0 },
+      Jun: { lunas: 0, tunggakan: 0 },
+      Jul: { lunas: 0, tunggakan: 0 },
+      Agu: { lunas: 0, tunggakan: 0 },
+      Sep: { lunas: 0, tunggakan: 0 },
+      Okt: { lunas: 0, tunggakan: 0 },
+      Nov: { lunas: 0, tunggakan: 0 },
+      Des: { lunas: 0, tunggakan: 0 },
+    };
+
+    invoices.forEach((inv) => {
+      const b = inv.bulan.toLowerCase();
+      let key = 'Jan';
+      if (b.includes('jan')) key = 'Jan';
+      else if (b.includes('feb')) key = 'Feb';
+      else if (b.includes('mar')) key = 'Mar';
+      else if (b.includes('apr')) key = 'Apr';
+      else if (b.includes('mei')) key = 'Mei';
+      else if (b.includes('jun')) key = 'Jun';
+      else if (b.includes('jul')) key = 'Jul';
+      else if (b.includes('agu')) key = 'Agu';
+      else if (b.includes('sep')) key = 'Sep';
+      else if (b.includes('okt')) key = 'Okt';
+      else if (b.includes('nov')) key = 'Nov';
+      else if (b.includes('des')) key = 'Des';
+
+      if (inv.status === InvoiceStatus.LUNAS) {
+        totalLunas += Number(inv.nominal);
+        paidInvoicesCount++;
+        if (monthlyStats[key]) monthlyStats[key].lunas += Number(inv.nominal);
+      } else {
+        totalTunggakan += Number(inv.nominal);
+        if (monthlyStats[key]) monthlyStats[key].tunggakan += Number(inv.nominal);
+      }
+    });
+
+    const kepatuhan = invoices.length > 0 ? Math.round((paidInvoicesCount / invoices.length) * 100) : 0;
+
+    const chartData = Object.entries(monthlyStats).map(([bulan, data]) => ({
+      bulan,
+      lunas: data.lunas,
+      tunggakan: data.tunggakan,
+    }));
+
+    const recentInvoices = await this.invoiceRepo.find({
+      where: { status: InvoiceStatus.LUNAS },
+      order: { updated_at: 'DESC' },
+      take: 5,
+    });
+
+    const recentPayments = recentInvoices.map((inv) => ({
+      waktu: new Date(inv.updated_at || Date.now()).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      nama: inv.id_pelanggan,
+      bulan: inv.bulan,
+      nominal: inv.nominal,
+      admin: inv.penerima || 'Petugas DLH',
+    }));
+
+    return {
+      totalLunas,
+      totalTunggakan,
+      totalPelanggan,
+      kepatuhan,
+      chartData,
+      recentPayments,
+    };
+  }
+
   async generateTagihanMassal(bulan: string, tahun: string) {
     const pelangganList = await this.pelangganRepo.find();
     const tarifList = await this.tarifRepo.find();

@@ -9,6 +9,11 @@ import { UserRole } from '../../entities/user.entity';
 export class TagihanController {
   constructor(private readonly tagihanService: TagihanService) {}
 
+  @Get('stats')
+  async getDashboardStats(@Query('tahun') tahun: string) {
+    return this.tagihanService.getDashboardStats(tahun || '2026');
+  }
+
   @Get('public/cek')
   async publicCekTagihan(@Query('id') id: string) {
     return this.tagihanService.findPublicBill(id);
