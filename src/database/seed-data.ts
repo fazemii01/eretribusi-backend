@@ -139,12 +139,12 @@ export async function seedInitialData(dataSource: DataSource) {
                 id_pelanggan: idPelanggan,
                 bulan: 'Maret 2026',
                 nominal,
-                status: totalSeq % 3 === 0 ? InvoiceStatus.LUNAS : InvoiceStatus.BELUM_LUNAS,
-                penerima: totalSeq % 3 === 0 ? 'Admin DLH' : '-',
+                status: overallSeq % 3 === 0 ? InvoiceStatus.LUNAS : InvoiceStatus.BELUM_LUNAS,
+                penerima: overallSeq % 3 === 0 ? 'Admin DLH' : '-',
               }),
             );
 
-            const invFebruari = invoiceList.push(
+            invoiceList.push(
               dataSource.getRepository(Invoice).create({
                 id_invoice: `INV-2602-${idPelanggan}`,
                 id_pelanggan: idPelanggan,
@@ -155,7 +155,7 @@ export async function seedInitialData(dataSource: DataSource) {
               }),
             );
 
-            totalSeq++;
+            overallSeq++;
           }
         }
       }
