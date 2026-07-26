@@ -132,7 +132,7 @@ export class TagihanService {
     });
 
     const recentPayments = recentInvoices.map((inv) => ({
-      waktu: new Date(inv.updated_at || Date.now()).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      waktu: new Date(inv.updated_at || inv.created_at || Date.now()).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
       nama: inv.id_pelanggan,
       bulan: inv.bulan,
       nominal: inv.nominal,

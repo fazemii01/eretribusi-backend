@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryColumn, CreateDateColumn, Index } from 'typeorm';
+import { Entity, Column, PrimaryColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
 export enum InvoiceStatus {
   LUNAS = 'Lunas',
@@ -37,4 +37,7 @@ export class Invoice {
 
   @CreateDateColumn()
   created_at: Date;
+
+  @UpdateDateColumn()
+  updated_at: Date;
 }
