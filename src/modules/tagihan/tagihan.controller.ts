@@ -5,9 +5,14 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { UserRole } from '../../entities/user.entity';
 
+import { TagihanCronService } from './tagihan-cron.service';
+
 @Controller('api/tagihan')
 export class TagihanController {
-  constructor(private readonly tagihanService: TagihanService) {}
+  constructor(
+    private readonly tagihanService: TagihanService,
+    private readonly tagihanCronService: TagihanCronService,
+  ) {}
 
   @Get('stats')
   async getDashboardStats(@Query('tahun') tahun: string) {
@@ -44,5 +49,11 @@ export class TagihanController {
   @Post('generate-massal')
   async generateTagihanMassal(@Body() body: { bulan: string; tahun: string }) {
     return this.tagihanService.generateTagihanMassal(body.bulan, body.tahun);
+  }
+
+  @Post('trigger-cron')
+  async triggerCronManually(@Query('force') force?: string) {
+    const isForce = force === 'true' || force === '1';
+    return this.tagihanCronService.checkAndGenerateMonthlyInvoices(isForce);
   }
 }
