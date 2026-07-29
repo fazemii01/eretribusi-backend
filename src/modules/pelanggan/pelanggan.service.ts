@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like, In } from 'typeorm';
 import { Pelanggan } from '../../entities/pelanggan.entity';
 import { Wilayah } from '../../entities/wilayah.entity';
+import { Invoice } from '../../entities/invoice.entity';
+import { Pembayaran } from '../../entities/pembayaran.entity';
 import { SearchService } from '../elasticsearch/search.service';
 
 @Injectable()
@@ -12,6 +14,10 @@ export class PelangganService {
     private pelangganRepo: Repository<Pelanggan>,
     @InjectRepository(Wilayah)
     private wilayahRepo: Repository<Wilayah>,
+    @InjectRepository(Invoice)
+    private invoiceRepo: Repository<Invoice>,
+    @InjectRepository(Pembayaran)
+    private pembayaranRepo: Repository<Pembayaran>,
     private searchService: SearchService,
   ) {}
 
@@ -92,7 +98,16 @@ export class PelangganService {
 
   async remove(id: string): Promise<boolean> {
     const p = await this.findOne(id);
+    await this.pembayaranRepo.delete({ id_pelanggan: id });
+    await this.invoiceRepo.delete({ id_pelanggan: id });
     await this.pelangganRepo.remove(p);
+    await this.searchService.deletePelangganIndex(id);
     return true;
+  }
+
+  async syncElasticsearch(): Promise<{ count: number }> {
+    const all = await this.pelangganRepo.find();
+    await this.searchService.bulkIndexPelanggan(all);
+    return { count: all.length };
   }
 }

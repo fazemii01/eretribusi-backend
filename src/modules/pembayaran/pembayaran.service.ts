@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Pembayaran } from '../../entities/pembayaran.entity';
 import { Invoice, InvoiceStatus } from '../../entities/invoice.entity';
+import { Pelanggan } from '../../entities/pelanggan.entity';
 
 @Injectable()
 export class PembayaranService {
@@ -11,7 +12,42 @@ export class PembayaranService {
     private pembayaranRepo: Repository<Pembayaran>,
     @InjectRepository(Invoice)
     private invoiceRepo: Repository<Invoice>,
+    @InjectRepository(Pelanggan)
+    private pelangganRepo: Repository<Pelanggan>,
   ) {}
+
+  async findAll() {
+    const pelangganList = await this.pelangganRepo.find();
+    if (pelangganList.length === 0) {
+      await this.pembayaranRepo.clear();
+      return [];
+    }
+    // Use uppercase keys for case-insensitive matching
+    const pelangganMap = new Map<string, Pelanggan>();
+    pelangganList.forEach((p) => pelangganMap.set(p.id_pelanggan.toUpperCase(), p));
+
+    const list = await this.pembayaranRepo.find({ order: { created_at: 'DESC' } });
+    return list
+      .filter((pay) => pelangganMap.has((pay.id_pelanggan || '').toUpperCase()))
+      .map((pay) => {
+        const p = pelangganMap.get((pay.id_pelanggan || '').toUpperCase());
+        return {
+          ...pay,
+          nama: p?.nama || pay.id_pelanggan,
+          pelanggan: p
+            ? {
+                nama: p.nama,
+                alamat: p.alamat,
+                rt: p.rt,
+                rw: p.rw,
+                kelurahan: p.kelurahan,
+                kecamatan: p.kecamatan,
+                va: p.va,
+              }
+            : null,
+        };
+      });
+  }
 
   async simpanPembayaran(data: {
     idInvoice: string;
@@ -56,16 +92,26 @@ export class PembayaranService {
   async getKuitansiInfo(idInvoice: string) {
     const idKuitansi = `PAY-${idInvoice}`;
     const bayar = await this.pembayaranRepo.findOne({ where: { id_kuitansi: idKuitansi } });
-    if (bayar) return bayar;
+    if (bayar) {
+      const p = await this.pelangganRepo.findOne({ where: { id_pelanggan: bayar.id_pelanggan } });
+      return {
+        ...bayar,
+        nama: p?.nama || bayar.id_pelanggan,
+        pelanggan: p || null,
+      };
+    }
 
     // Fallback if invoice is marked lunas directly
     const inv = await this.invoiceRepo.findOne({ where: { id_invoice: idInvoice } });
     if (!inv || inv.status !== InvoiceStatus.LUNAS) return null;
 
+    const p = await this.pelangganRepo.findOne({ where: { id_pelanggan: inv.id_pelanggan } });
     return {
       id_kuitansi: idKuitansi,
       id_invoice: inv.id_invoice,
       id_pelanggan: inv.id_pelanggan,
+      nama: p?.nama || inv.id_pelanggan,
+      pelanggan: p || null,
       bulan: inv.bulan,
       nominal: inv.nominal,
       admin: inv.penerima,

@@ -50,7 +50,42 @@ export class TagihanService {
   }
 
   async findAll() {
-    return this.invoiceRepo.find({ order: { created_at: 'DESC' } });
+    const pelangganList = await this.pelangganRepo.find();
+    if (pelangganList.length === 0) {
+      await this.invoiceRepo.clear();
+      return [];
+    }
+
+    // Use uppercase keys for case-insensitive matching
+    const pelangganMap = new Map<string, Pelanggan>();
+    pelangganList.forEach((p) => pelangganMap.set(p.id_pelanggan.toUpperCase(), p));
+
+    const invoices = await this.invoiceRepo.find({ order: { created_at: 'DESC' } });
+
+    // Filter out orphaned invoices and populate pelanggan data
+    return invoices
+      .filter((inv) => pelangganMap.has((inv.id_pelanggan || '').toUpperCase()))
+      .map((inv) => {
+        const p = pelangganMap.get((inv.id_pelanggan || '').toUpperCase());
+        return {
+          ...inv,
+          // Root-level fields for direct access by frontend
+          nama: p ? p.nama : inv.id_pelanggan,
+          alamat: p ? p.alamat : '-',
+          // Nested pelanggan object for backward compatibility
+          pelanggan: p
+            ? {
+                nama: p.nama,
+                alamat: p.alamat,
+                rt: p.rt,
+                rw: p.rw,
+                kelurahan: p.kelurahan,
+                kecamatan: p.kecamatan,
+                va: p.va,
+              }
+            : null,
+        };
+      });
   }
 
   async getUniqueYears(): Promise<string[]> {
@@ -131,13 +166,18 @@ export class TagihanService {
       take: 5,
     });
 
-    const recentPayments = recentInvoices.map((inv) => ({
-      waktu: new Date(inv.updated_at || inv.created_at || Date.now()).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      nama: inv.id_pelanggan,
-      bulan: inv.bulan,
-      nominal: inv.nominal,
-      admin: inv.penerima || 'Petugas DLH',
-    }));
+    const recentPayments = await Promise.all(
+      recentInvoices.map(async (inv) => {
+        const p = await this.pelangganRepo.findOne({ where: { id_pelanggan: inv.id_pelanggan } });
+        return {
+          waktu: new Date(inv.updated_at || inv.created_at || Date.now()).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+          nama: p ? p.nama : inv.id_pelanggan,
+          bulan: inv.bulan,
+          nominal: inv.nominal,
+          admin: inv.penerima || 'Petugas DLH',
+        };
+      })
+    );
 
     return {
       totalLunas,

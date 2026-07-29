@@ -23,4 +23,20 @@ export class WilayahService {
   async findAll(): Promise<Wilayah[]> {
     return this.wilayahRepo.find({ order: { kecamatan: 'ASC', kelurahan: 'ASC' } });
   }
+
+  async createOrUpdate(data: Partial<Wilayah>): Promise<Wilayah> {
+    if (data.id) {
+      const existing = await this.wilayahRepo.findOneBy({ id: data.id });
+      if (existing) {
+        Object.assign(existing, data);
+        return this.wilayahRepo.save(existing);
+      }
+    }
+    const newWil = this.wilayahRepo.create(data);
+    return this.wilayahRepo.save(newWil);
+  }
+
+  async remove(id: number): Promise<void> {
+    await this.wilayahRepo.delete(id);
+  }
 }

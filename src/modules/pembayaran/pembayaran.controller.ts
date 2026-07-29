@@ -10,6 +10,11 @@ import { InvoiceStatus } from '../../entities/invoice.entity';
 export class PembayaranController {
   constructor(private readonly pembayaranService: PembayaranService) {}
 
+  @Get()
+  async findAll() {
+    return this.pembayaranService.findAll();
+  }
+
   @Get('kuitansi/:idInvoice')
   async getKuitansiInfo(@Param('idInvoice') idInvoice: string) {
     return this.pembayaranService.getKuitansiInfo(idInvoice);

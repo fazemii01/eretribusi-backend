@@ -39,7 +39,7 @@ export class SearchService {
           va: pelanggan.va,
         },
       });
-    } catch (e) {
+    } catch (e: any) {
       this.logger.error(`ES Index error: ${e.message}`);
     }
   }
@@ -58,9 +58,39 @@ export class SearchService {
         },
       });
       return result.hits.hits.map((hit: any) => hit._id);
-    } catch (e) {
+    } catch (e: any) {
       this.logger.warn(`ES Search error: ${e.message}. Fallback to DB.`);
       return null;
+    }
+  }
+
+  async deletePelangganIndex(id: string) {
+    if (!this.isEnabled || !this.esClient) return;
+    try {
+      await this.esClient.delete({ index: 'pelanggan', id });
+    } catch (e) {
+      // Ignore if not found
+    }
+  }
+
+  async bulkIndexPelanggan(pelangganList: any[]) {
+    if (!this.isEnabled || !this.esClient || pelangganList.length === 0) return;
+    try {
+      const operations = pelangganList.flatMap((p) => [
+        { index: { _index: 'pelanggan', _id: p.id_pelanggan } },
+        {
+          id_pelanggan: p.id_pelanggan,
+          nama: p.nama,
+          alamat: p.alamat,
+          kelurahan: p.kelurahan,
+          kecamatan: p.kecamatan,
+          va: p.va,
+        },
+      ]);
+      await this.esClient.bulk({ refresh: true, operations });
+      this.logger.log(`Bulk indexed ${pelangganList.length} Pelanggan records into Elasticsearch.`);
+    } catch (e: any) {
+      this.logger.error(`ES Bulk Index error: ${e.message}`);
     }
   }
 }

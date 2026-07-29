@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param } from '@nestjs/common';
 import { WilayahService } from './wilayah.service';
 
 @Controller('api/wilayah')
@@ -13,5 +13,15 @@ export class WilayahController {
   @Get()
   async findAll() {
     return this.wilayahService.findAll();
+  }
+
+  @Post()
+  async createOrUpdate(@Body() body: any) {
+    return this.wilayahService.createOrUpdate(body);
+  }
+
+  @Delete(':id')
+  async remove(@Param('id') id: string) {
+    return this.wilayahService.remove(Number(id));
   }
 }

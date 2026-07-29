@@ -37,4 +37,9 @@ export class PelangganController {
   async remove(@Param('id') id: string) {
     return this.pelangganService.remove(id);
   }
+
+  @Post('sync-es')
+  async syncEs() {
+    return this.pelangganService.syncElasticsearch();
+  }
 }

@@ -2,11 +2,12 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Pembayaran } from '../../entities/pembayaran.entity';
 import { Invoice } from '../../entities/invoice.entity';
+import { Pelanggan } from '../../entities/pelanggan.entity';
 import { PembayaranService } from './pembayaran.service';
 import { PembayaranController } from './pembayaran.controller';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Pembayaran, Invoice])],
+  imports: [TypeOrmModule.forFeature([Pembayaran, Invoice, Pelanggan])],
   providers: [PembayaranService],
   controllers: [PembayaranController],
   exports: [PembayaranService],
