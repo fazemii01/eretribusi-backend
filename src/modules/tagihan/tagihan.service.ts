@@ -160,17 +160,27 @@ export class TagihanService {
     const tarifMap = new Map<number, number>();
     tarifList.forEach((t) => tarifMap.set(t.va, t.nominal));
 
-    let createdCount = 0;
     const yearShort = tahun.slice(-2);
     const monthShort = ('0' + (new Date().getMonth() + 1)).slice(-2);
 
-    for (const p of pelangganList) {
-      if (!existingMap.has(p.id_pelanggan)) {
+    // Queue Batching Configuration
+    const CHUNK_SIZE = 100;
+    const DELAY_MS = 3000;
+    const toProcess = pelangganList.filter((p) => !existingMap.has(p.id_pelanggan));
+
+    let createdCount = 0;
+    const totalBatches = Math.ceil(toProcess.length / CHUNK_SIZE);
+
+    for (let i = 0; i < toProcess.length; i += CHUNK_SIZE) {
+      const chunk = toProcess.slice(i, i + CHUNK_SIZE);
+      const batchNum = Math.floor(i / CHUNK_SIZE) + 1;
+
+      const invoicesToInsert = chunk.map((p) => {
         const nominal = tarifMap.get(p.va) || 0;
         const cleanId = p.id_pelanggan.replace(/[^A-Z0-9]/gi, '');
         const idInvoice = `INV-${yearShort}${monthShort}-${cleanId}`;
 
-        const inv = this.invoiceRepo.create({
+        return this.invoiceRepo.create({
           id_invoice: idInvoice,
           id_pelanggan: p.id_pelanggan,
           bulan: bulanTahun,
@@ -178,14 +188,19 @@ export class TagihanService {
           status: InvoiceStatus.BELUM_LUNAS,
           penerima: '-',
         });
-        await this.invoiceRepo.save(inv);
-        createdCount++;
+      });
+
+      await this.invoiceRepo.save(invoicesToInsert);
+      createdCount += invoicesToInsert.length;
+
+      if (batchNum < totalBatches) {
+        await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
       }
     }
 
     return {
       status: 'sukses',
-      pesan: `Berhasil membuat ${createdCount} tagihan baru untuk ${bulanTahun}.`,
+      pesan: `Berhasil membuat ${createdCount} tagihan baru untuk ${bulanTahun} dalam ${totalBatches} batch antrean.`,
     };
   }
 

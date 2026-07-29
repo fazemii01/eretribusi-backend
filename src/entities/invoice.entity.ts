@@ -7,16 +7,16 @@ export enum InvoiceStatus {
 
 @Entity('data_invoice')
 export class Invoice {
-  @PrimaryColumn({ length: 50 })
-  id_invoice: string; // e.g. INV-2603-JGY0101001
+  @PrimaryColumn({ length: 150 })
+  id_invoice: string;
 
-  @Column({ length: 20 })
+  @Column({ length: 100 })
   @Index()
   id_pelanggan: string;
 
   @Column({ length: 50 })
   @Index()
-  bulan: string; // e.g. "Maret 2026"
+  bulan: string;
 
   @Column({ type: 'int' })
   nominal: number;

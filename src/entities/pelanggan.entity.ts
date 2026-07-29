@@ -2,19 +2,19 @@ import { Entity, Column, PrimaryColumn, CreateDateColumn, UpdateDateColumn } fro
 
 @Entity('data_pelanggan')
 export class Pelanggan {
-  @PrimaryColumn({ length: 20 })
-  id_pelanggan: string; // e.g. JGY0101001
+  @PrimaryColumn({ length: 100 })
+  id_pelanggan: string;
 
-  @Column({ length: 150 })
+  @Column({ length: 255 })
   nama: string;
 
   @Column({ type: 'text' })
   alamat: string;
 
-  @Column({ length: 10, nullable: true })
+  @Column({ length: 50, nullable: true })
   rt: string;
 
-  @Column({ length: 10, nullable: true })
+  @Column({ length: 50, nullable: true })
   rw: string;
 
   @Column({ length: 100 })
@@ -24,9 +24,9 @@ export class Pelanggan {
   kecamatan: string;
 
   @Column({ type: 'int' })
-  va: number; // electrical capacity in VA (FK to Tarif)
+  va: number; // electrical capacity in VA
 
-  @Column({ length: 20, default: '-' })
+  @Column({ length: 50, default: '-' })
   no_hp: string;
 
   @CreateDateColumn()

@@ -255,6 +255,10 @@ export class SnapPaymentService {
 
     // Record receipt
     const idKuitansi = `PAY-${idInvoice}`;
+    const rawPaidTime = notification.paidTime || notification.transactionDate || notification.datetime;
+    const paidTimeDate = rawPaidTime ? new Date(rawPaidTime) : new Date();
+    const bankRef = notification.additionalInfo?.referenceNo || notification.referenceNo || notification.additionalInfo?.acquirerTransactionId || null;
+
     let bayar = await this.pembayaranRepo.findOne({ where: { id_kuitansi: idKuitansi } });
     if (!bayar) {
       bayar = this.pembayaranRepo.create({
@@ -264,7 +268,13 @@ export class SnapPaymentService {
         bulan: inv.bulan,
         nominal: inv.nominal,
         admin: 'BANK_SNAP_GATEWAY',
+        waktu_bayar: paidTimeDate,
+        referensi_bank: bankRef,
       });
+      await this.pembayaranRepo.save(bayar);
+    } else {
+      bayar.waktu_bayar = paidTimeDate;
+      if (bankRef) bayar.referensi_bank = bankRef;
       await this.pembayaranRepo.save(bayar);
     }
 
