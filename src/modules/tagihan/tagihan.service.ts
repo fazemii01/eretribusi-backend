@@ -17,11 +17,29 @@ export class TagihanService {
   ) {}
 
   async findPublicBill(idInput: string) {
-    const invoices = await this.invoiceRepo.find({
-      where: { id_pelanggan: idInput.toUpperCase() },
-      order: { created_at: 'DESC' },
-    });
-    const pelanggan = await this.pelangganRepo.findOne({ where: { id_pelanggan: idInput.toUpperCase() } });
+    const cleanId = (idInput || '').trim();
+    if (!cleanId) return { pelanggan: null, tagihan: [] };
+
+    let pelanggan = await this.pelangganRepo.findOne({ where: { id_pelanggan: cleanId } });
+    if (!pelanggan) {
+      pelanggan = await this.pelangganRepo.findOne({ where: { id_pelanggan: cleanId.toUpperCase() } });
+    }
+    if (!pelanggan) {
+      pelanggan = await this.pelangganRepo
+        .createQueryBuilder('p')
+        .where('LOWER(p.id_pelanggan) = LOWER(:id)', { id: cleanId })
+        .getOne();
+    }
+
+    if (!pelanggan) {
+      return { pelanggan: null, tagihan: [] };
+    }
+
+    const invoices = await this.invoiceRepo
+      .createQueryBuilder('inv')
+      .where('LOWER(inv.id_pelanggan) = LOWER(:id)', { id: pelanggan.id_pelanggan })
+      .orderBy('inv.created_at', 'DESC')
+      .getMany();
 
     return {
       pelanggan,

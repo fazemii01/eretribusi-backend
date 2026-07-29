@@ -19,7 +19,7 @@ export class TagihanController {
     return this.tagihanService.getDashboardStats(tahun || '2026');
   }
 
-  @Get('public/cek')
+  @Get(['public', 'public/cek'])
   async publicCekTagihan(@Query('id') id: string) {
     return this.tagihanService.findPublicBill(id);
   }
