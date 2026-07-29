@@ -63,13 +63,44 @@ export class PelangganService {
     let idPelanggan = data.id_pelanggan;
 
     if (!idPelanggan || idPelanggan.trim() === '') {
-      // Auto-generate ID: {KEL_CODE}{RW}{RT}{SEQ} e.g. JGY0101001
+      // Auto-generate ID format: {KEC}-{KEL}-{SEQ4} e.g. LMJ-JGY-0001
       const kel = await this.wilayahRepo.findOne({ where: { kelurahan: data.kelurahan } });
-      const kelCode = kel?.kode_kel || 'LMJ';
-      const rtPadded = (data.rt || '01').padStart(2, '0');
-      const rwPadded = (data.rw || '01').padStart(2, '0');
 
-      const prefix = `${kelCode}${rwPadded}${rtPadded}`;
+      const kecMap: Record<string, string> = {
+        LUMAJANG: 'LMJ',
+        SUKODONO: 'SKD',
+        SUMBERSUKO: 'SBS',
+        TEMPEH: 'TMP',
+        PASIRIAN: 'PSR',
+        CANDIPURO: 'CDP',
+        PRONOJIWO: 'PRN',
+        YOSOWILANGUN: 'YSW',
+        KUNIR: 'KNR',
+        TEKUNG: 'TKG',
+        ROWOKANGKUNG: 'RWK',
+        JATIROTO: 'JTR',
+        RANDUAGUNG: 'RDG',
+        KLAKAH: 'KLK',
+        RANUYOSO: 'RYS',
+        KEDUNGJAJANG: 'KDJ',
+        PADANG: 'PDG',
+        GUCIALIT: 'GCL',
+        SENDURO: 'SDR',
+        PASRUJAMBE: 'PRJ',
+        TEMPURSARI: 'TPS',
+      };
+
+      const kecClean = (data.kecamatan || 'Lumajang').toUpperCase().trim();
+      const kecCode = kecMap[kecClean] || (kecClean.length >= 3 ? kecClean.slice(0, 3) : kecClean.padEnd(3, 'X'));
+
+      const kelRaw = (data.kelurahan || 'LMJ').toUpperCase().replace(/[^A-Z]/g, '');
+      const kelCode = kel?.kode_kel
+        ? kel.kode_kel.toUpperCase()
+        : kelRaw.length >= 3
+          ? kelRaw.slice(0, 3)
+          : kelRaw.padEnd(3, 'X');
+
+      const prefix = `${kecCode}-${kelCode}-`;
       const lastRec = await this.pelangganRepo.findOne({
         where: { id_pelanggan: Like(`${prefix}%`) },
         order: { id_pelanggan: 'DESC' },
@@ -81,7 +112,7 @@ export class PelangganService {
         const lastSeqNum = parseInt(lastSeqStr, 10);
         if (!isNaN(lastSeqNum)) seq = lastSeqNum + 1;
       }
-      idPelanggan = `${prefix}${seq.toString().padStart(3, '0')}`;
+      idPelanggan = `${prefix}${seq.toString().padStart(4, '0')}`;
     }
 
     let p = await this.pelangganRepo.findOne({ where: { id_pelanggan: idPelanggan } });

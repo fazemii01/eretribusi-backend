@@ -13,9 +13,15 @@ export class SearchService {
       try {
         // Lazy require in case elasticsearch package is optional
         const { Client } = require('@elastic/elasticsearch');
-        this.esClient = new Client({ node });
+        this.esClient = new Client({
+          node,
+          headers: {
+            accept: 'application/vnd.elasticsearch+json; compatible-with=8',
+            'content-type': 'application/vnd.elasticsearch+json; compatible-with=8',
+          },
+        });
         this.isEnabled = true;
-        this.logger.log(`Elasticsearch connected to ${node}`);
+        this.logger.log(`Elasticsearch connected to ${node} (compatibility mode 8)`);
       } catch (err) {
         this.logger.warn('Elasticsearch client package not loaded. Falling back to DB search.');
       }
