@@ -31,7 +31,7 @@ import { SnapPaymentModule } from './modules/snap-payment/snap-payment.module';
         password: configService.get<string>('DB_PASS') || '',
         database: configService.get<string>('DB_NAME') || 'erestribusi_db',
         entities: [Pelanggan, Invoice, Pembayaran, Tarif, Wilayah, User, Pengaturan],
-        synchronize: configService.get<string>('DB_SYNCHRONIZE') === 'true',
+        synchronize: false,
       }),
       inject: [ConfigService],
     }),
