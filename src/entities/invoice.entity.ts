@@ -29,7 +29,7 @@ export class Invoice {
   @Index()
   status: InvoiceStatus;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ type: 'longtext', nullable: true })
   bukti_url: string;
 
   @Column({ length: 100, default: '-' })
