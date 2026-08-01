@@ -116,13 +116,16 @@ export class TagihanService {
         if (/^\d{4}$/.test(yr)) yearsSet.add(yr);
       }
     });
+    const currentYr = new Date().getFullYear().toString();
+    yearsSet.add(currentYr);
     return Array.from(yearsSet).sort().reverse();
   }
 
-  async getDashboardStats(tahun: string = '2026') {
+  async getDashboardStats(tahun?: string) {
+    const targetYear = tahun || new Date().getFullYear().toString();
     const totalPelanggan = await this.pelangganRepo.count();
     const invoices = await this.invoiceRepo.find({
-      where: { bulan: Like(`%${tahun}%`) },
+      where: { bulan: Like(`%${targetYear}%`) },
     });
 
     let totalLunas = 0;
@@ -207,24 +210,61 @@ export class TagihanService {
     };
   }
 
+  getMonthCode(bulanStr: string): string {
+    if (!bulanStr) return ('0' + (new Date().getMonth() + 1)).slice(-2);
+    const b = bulanStr.toLowerCase().trim();
+
+    if (b.includes('jan')) return '01';
+    if (b.includes('feb')) return '02';
+    if (b.includes('mar')) return '03';
+    if (b.includes('apr')) return '04';
+    if (b.includes('mei')) return '05';
+    if (b.includes('jun')) return '06';
+    if (b.includes('jul')) return '07';
+    if (b.includes('agu') || b.includes('ags')) return '08';
+    if (b.includes('sep')) return '09';
+    if (b.includes('okt')) return '10';
+    if (b.includes('nov')) return '11';
+    if (b.includes('des')) return '12';
+
+    const num = parseInt(b, 10);
+    if (!isNaN(num) && num >= 1 && num <= 12) {
+      return ('0' + num).slice(-2);
+    }
+
+    return ('0' + (new Date().getMonth() + 1)).slice(-2);
+  }
+
   async generateTagihanMassal(bulan: string, tahun: string) {
     const pelangganList = await this.pelangganRepo.find();
     const tarifList = await this.tarifRepo.find();
     const bulanTahun = `${bulan} ${tahun}`;
 
-    const existingInvoices = await this.invoiceRepo.find({ where: { bulan: bulanTahun } });
-    const existingMap = new Set(existingInvoices.map((inv) => inv.id_pelanggan));
+    // Fetch all existing invoices to verify existing billing periods and primary keys
+    const allInvoices = await this.invoiceRepo.find();
+    const existingCustomerIds = new Set<string>();
+    const existingIdMap = new Set<string>();
+
+    allInvoices.forEach((inv) => {
+      existingIdMap.add(inv.id_invoice.toUpperCase());
+      if (inv.bulan && inv.bulan.toLowerCase().trim() === bulanTahun.toLowerCase().trim()) {
+        existingCustomerIds.add(inv.id_pelanggan.toUpperCase());
+      }
+    });
 
     const tarifMap = new Map<number, number>();
     tarifList.forEach((t) => tarifMap.set(t.va, t.nominal));
 
-    const yearShort = tahun.slice(-2);
-    const monthShort = ('0' + (new Date().getMonth() + 1)).slice(-2);
+    const yearShort = tahun.trim().slice(-2);
+    const monthShort = this.getMonthCode(bulan);
 
     // Queue Batching Configuration
     const CHUNK_SIZE = 100;
     const DELAY_MS = 3000;
-    const toProcess = pelangganList.filter((p) => !existingMap.has(p.id_pelanggan));
+    const toProcess = pelangganList.filter(
+      (p) => !existingCustomerIds.has(p.id_pelanggan.toUpperCase()),
+    );
+    const skippedCount = pelangganList.length - toProcess.length;
 
     let createdCount = 0;
     const totalBatches = Math.ceil(toProcess.length / CHUNK_SIZE);
@@ -236,7 +276,15 @@ export class TagihanService {
       const invoicesToInsert = chunk.map((p) => {
         const nominal = tarifMap.get(p.va) || 0;
         const cleanId = p.id_pelanggan.replace(/[^A-Z0-9]/gi, '');
-        const idInvoice = `INV-${yearShort}${monthShort}-${cleanId}`;
+        let idInvoice = `INV-${yearShort}${monthShort}-${cleanId}`;
+
+        // Ensure unique primary key even if collision occurs
+        let seq = 1;
+        while (existingIdMap.has(idInvoice.toUpperCase())) {
+          idInvoice = `INV-${yearShort}${monthShort}-${cleanId}-${seq}`;
+          seq++;
+        }
+        existingIdMap.add(idInvoice.toUpperCase());
 
         return this.invoiceRepo.create({
           id_invoice: idInvoice,
@@ -248,17 +296,33 @@ export class TagihanService {
         });
       });
 
-      await this.invoiceRepo.save(invoicesToInsert);
-      createdCount += invoicesToInsert.length;
+      if (invoicesToInsert.length > 0) {
+        await this.invoiceRepo.save(invoicesToInsert);
+        createdCount += invoicesToInsert.length;
+      }
 
       if (batchNum < totalBatches) {
         await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
       }
     }
 
+    let message = '';
+    if (createdCount > 0 && skippedCount > 0) {
+      message = `Berhasil menerbitkan ${createdCount} tagihan baru untuk ${bulanTahun}. (${skippedCount} pelanggan sudah memiliki tagihan untuk periode ini dan dilewati).`;
+    } else if (createdCount > 0) {
+      message = `Berhasil menerbitkan ${createdCount} tagihan baru untuk ${bulanTahun}.`;
+    } else if (skippedCount > 0) {
+      message = `Seluruh ${skippedCount} pelanggan sudah memiliki tagihan untuk periode ${bulanTahun}. Tidak ada tagihan baru yang dibuat.`;
+    } else {
+      message = `Tidak ada pelanggan yang ditemukan untuk diproses.`;
+    }
+
     return {
       status: 'sukses',
-      pesan: `Berhasil membuat ${createdCount} tagihan baru untuk ${bulanTahun} dalam ${totalBatches} batch antrean.`,
+      createdCount,
+      skippedCount,
+      pesan: message,
+      message,
     };
   }
 

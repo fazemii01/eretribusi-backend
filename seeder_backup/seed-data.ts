@@ -335,10 +335,11 @@ function loadPelangganFromCSV(
         pelangganList.push(p);
 
         const nominal = nominalMap[va] || 8000;
+        const cleanId = idPelanggan.replace(/[^A-Z0-9]/gi, '');
 
         invoiceList.push(
           invoiceRepo.create({
-            id_invoice: `INV-2603-${idPelanggan}`,
+            id_invoice: `INV-2603-${cleanId}`,
             id_pelanggan: idPelanggan,
             bulan: 'Maret 2026',
             nominal,
@@ -349,7 +350,7 @@ function loadPelangganFromCSV(
 
         invoiceList.push(
           invoiceRepo.create({
-            id_invoice: `INV-2602-${idPelanggan}`,
+            id_invoice: `INV-2602-${cleanId}`,
             id_pelanggan: idPelanggan,
             bulan: 'Februari 2026',
             nominal,

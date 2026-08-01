@@ -16,7 +16,7 @@ export class TagihanController {
 
   @Get('stats')
   async getDashboardStats(@Query('tahun') tahun: string) {
-    return this.tagihanService.getDashboardStats(tahun || '2026');
+    return this.tagihanService.getDashboardStats(tahun);
   }
 
   @Get(['public', 'public/cek'])
