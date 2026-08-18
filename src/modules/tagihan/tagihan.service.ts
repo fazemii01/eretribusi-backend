@@ -25,7 +25,7 @@ export class TagihanService {
     // If no id provided, try resolving directly by invoice number
     if (!cleanId && !cleanInvoice) return { pelanggan: null, tagihan: [] };
 
-    let pelanggan = null;
+    let pelanggan: Pelanggan | null = null;
     let matchedInvoiceId: string | null = null;
 
     // --- Strategy 1: look up pelanggan by id_pelanggan (exact, uppercase, case-insensitive) ---
