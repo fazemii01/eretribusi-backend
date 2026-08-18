@@ -22,8 +22,11 @@ export class TagihanController {
   }
 
   @Get(['public', 'public/cek'])
-  async publicCekTagihan(@Query('id') id: string) {
-    return this.tagihanService.findPublicBill(id);
+  async publicCekTagihan(
+    @Query('id') id: string,
+    @Query('invoice') invoice?: string,
+  ) {
+    return this.tagihanService.findPublicBill(id, invoice);
   }
 
   @Get('public/years')

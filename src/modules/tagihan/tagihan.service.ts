@@ -18,27 +18,48 @@ export class TagihanService {
     private tarifRepo: Repository<Tarif>,
   ) {}
 
-  async findPublicBill(idInput: string) {
+  async findPublicBill(idInput: string, invoiceInput?: string) {
     const cleanId = (idInput || '').trim();
-    if (!cleanId) return { pelanggan: null, tagihan: [] };
+    const cleanInvoice = (invoiceInput || '').trim();
 
-    let pelanggan = await this.pelangganRepo.findOne({ where: { id_pelanggan: cleanId } });
-    if (!pelanggan) {
-      pelanggan = await this.pelangganRepo.findOne({ where: { id_pelanggan: cleanId.toUpperCase() } });
-    }
-    if (!pelanggan) {
-      pelanggan = await this.pelangganRepo
-        .createQueryBuilder('p')
-        .where('LOWER(p.id_pelanggan) = LOWER(:id)', { id: cleanId })
-        .getOne();
-    }
+    // If no id provided, try resolving directly by invoice number
+    if (!cleanId && !cleanInvoice) return { pelanggan: null, tagihan: [] };
 
-    // If still not found, check if cleanId is an Invoice ID (e.g. scanned from receipt QR code)
+    let pelanggan = null;
     let matchedInvoiceId: string | null = null;
-    if (!pelanggan) {
+
+    // --- Strategy 1: look up pelanggan by id_pelanggan (exact, uppercase, case-insensitive) ---
+    if (cleanId) {
+      pelanggan = await this.pelangganRepo.findOne({ where: { id_pelanggan: cleanId } });
+      if (!pelanggan) {
+        pelanggan = await this.pelangganRepo.findOne({ where: { id_pelanggan: cleanId.toUpperCase() } });
+      }
+      if (!pelanggan) {
+        pelanggan = await this.pelangganRepo
+          .createQueryBuilder('p')
+          .where('LOWER(p.id_pelanggan) = LOWER(:id)', { id: cleanId })
+          .getOne();
+      }
+    }
+
+    // --- Strategy 2: cleanId might itself be an invoice ID ---
+    if (!pelanggan && cleanId) {
       const invMatch = await this.invoiceRepo
         .createQueryBuilder('inv')
         .where('LOWER(inv.id_invoice) = LOWER(:id)', { id: cleanId })
+        .getOne();
+
+      if (invMatch) {
+        matchedInvoiceId = invMatch.id_invoice;
+        pelanggan = await this.pelangganRepo.findOne({ where: { id_pelanggan: invMatch.id_pelanggan } });
+      }
+    }
+
+    // --- Strategy 3: use the explicit invoice param from QR URL ---
+    if (!pelanggan && cleanInvoice) {
+      const invMatch = await this.invoiceRepo
+        .createQueryBuilder('inv')
+        .where('LOWER(inv.id_invoice) = LOWER(:inv)', { inv: cleanInvoice })
         .getOne();
 
       if (invMatch) {
@@ -51,16 +72,22 @@ export class TagihanService {
       return { pelanggan: null, tagihan: [], matched_invoice: null };
     }
 
-
     const invoices = await this.invoiceRepo
       .createQueryBuilder('inv')
       .where('LOWER(inv.id_pelanggan) = LOWER(:id)', { id: pelanggan.id_pelanggan })
       .orderBy('inv.created_at', 'DESC')
       .getMany();
 
+    // Determine which invoice to highlight: explicit invoice param > matched via lookup
+    let highlightedInvoice = matchedInvoiceId;
+    if (cleanInvoice) {
+      const found = invoices.find((i) => i.id_invoice.toLowerCase() === cleanInvoice.toLowerCase());
+      if (found) highlightedInvoice = found.id_invoice;
+    }
+
     return {
       pelanggan,
-      matched_invoice: matchedInvoiceId,
+      matched_invoice: highlightedInvoice,
       tagihan: invoices.map((inv) => ({
         invoice: inv.id_invoice,
         bulan: inv.bulan,
@@ -69,7 +96,6 @@ export class TagihanService {
         qris_payload: this.generateDynamicQrisPayload(inv.id_invoice, inv.nominal),
       })),
     };
-
   }
 
   async getHistoryTagihan(idPelanggan: string) {
