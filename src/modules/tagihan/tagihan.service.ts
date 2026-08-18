@@ -33,9 +33,24 @@ export class TagihanService {
         .getOne();
     }
 
+    // If still not found, check if cleanId is an Invoice ID (e.g. scanned from receipt QR code)
+    let matchedInvoiceId: string | null = null;
     if (!pelanggan) {
-      return { pelanggan: null, tagihan: [] };
+      const invMatch = await this.invoiceRepo
+        .createQueryBuilder('inv')
+        .where('LOWER(inv.id_invoice) = LOWER(:id)', { id: cleanId })
+        .getOne();
+
+      if (invMatch) {
+        matchedInvoiceId = invMatch.id_invoice;
+        pelanggan = await this.pelangganRepo.findOne({ where: { id_pelanggan: invMatch.id_pelanggan } });
+      }
     }
+
+    if (!pelanggan) {
+      return { pelanggan: null, tagihan: [], matched_invoice: null };
+    }
+
 
     const invoices = await this.invoiceRepo
       .createQueryBuilder('inv')
@@ -45,6 +60,7 @@ export class TagihanService {
 
     return {
       pelanggan,
+      matched_invoice: matchedInvoiceId,
       tagihan: invoices.map((inv) => ({
         invoice: inv.id_invoice,
         bulan: inv.bulan,
@@ -53,6 +69,7 @@ export class TagihanService {
         qris_payload: this.generateDynamicQrisPayload(inv.id_invoice, inv.nominal),
       })),
     };
+
   }
 
   async getHistoryTagihan(idPelanggan: string) {
