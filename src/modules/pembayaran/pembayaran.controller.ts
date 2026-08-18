@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, UseGuards, Req } from '@nestjs/common';
 import { PembayaranService } from './pembayaran.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -10,6 +10,8 @@ import { InvoiceStatus } from '../../entities/invoice.entity';
 export class PembayaranController {
   constructor(private readonly pembayaranService: PembayaranService) {}
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.KETUA, UserRole.ADMIN, UserRole.PETUGAS)
   @Get()
   async findAll() {
     return this.pembayaranService.findAll();
@@ -24,8 +26,14 @@ export class PembayaranController {
   @Roles(UserRole.KETUA, UserRole.ADMIN, UserRole.PETUGAS)
   @Post()
   async simpanPembayaran(
-    @Body() body: { idInvoice: string; status: InvoiceStatus; buktiUrl?: string; admin: string },
+    @Body() body: { idInvoice: string; status: InvoiceStatus; buktiUrl?: string; admin?: string },
+    @Req() req: any,
   ) {
-    return this.pembayaranService.simpanPembayaran(body);
+    const adminUser = req.user?.nama_lengkap || req.user?.username || body.admin || 'Petugas DLH';
+    return this.pembayaranService.simpanPembayaran({
+      ...body,
+      admin: body.admin || adminUser,
+    });
   }
 }
+

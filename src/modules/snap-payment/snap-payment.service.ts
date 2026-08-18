@@ -1,10 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Invoice, InvoiceStatus } from '../../entities/invoice.entity';
 import { Pembayaran } from '../../entities/pembayaran.entity';
+import { buildDynamicQrisString } from '../../common/qris-utils';
 
 @Injectable()
 export class SnapPaymentService {
@@ -23,7 +24,7 @@ export class SnapPaymentService {
    * Environment Variable Getters
    */
   private get baseUrl(): string {
-    return this.configService.get<string>('SNAP_BASE_URL') || 'https://sandbox.bankjatim.co.id';
+    return this.configService.get<string>('SNAP_BASE_URL') || 'https://apidevportal.aspi-indonesia.or.id';
   }
 
   private get clientKey(): string {
@@ -35,11 +36,11 @@ export class SnapPaymentService {
   }
 
   private get privateKey(): string {
-    return this.configService.get<string>('SNAP_PRIVATE_KEY') || '';
+    return (this.configService.get<string>('SNAP_PRIVATE_KEY') || '').replace(/\\n/g, '\n');
   }
 
   private get publicKey(): string {
-    return this.configService.get<string>('SNAP_PUBLIC_KEY') || '';
+    return (this.configService.get<string>('SNAP_PUBLIC_KEY') || '').replace(/\\n/g, '\n');
   }
 
   private get partnerServiceId(): string {
@@ -50,13 +51,21 @@ export class SnapPaymentService {
     return this.configService.get<string>('SNAP_MERCHANT_ID') || 'DLH_LUMAJANG_01';
   }
 
+  private get isMockMode(): boolean {
+    return this.configService.get<string>('SNAP_MOCK_MODE') === 'true';
+  }
+
+  private get verifySignatureEnabled(): boolean {
+    return this.configService.get<string>('SNAP_VERIFY_SIGNATURE') !== 'false';
+  }
+
   /**
-   * 1. Generate ASPI SNAP B2B Access Token Signature
+   * 1. Generate ASPI SNAP B2B Access Token Signature (Asymmetric RSA-SHA256 or HMAC-SHA256)
    */
   generateB2BSignature(timestamp: string): string {
     const stringToSign = `${this.clientKey}|${timestamp}`;
 
-    if (this.privateKey.startsWith('-----BEGIN')) {
+    if (this.privateKey.includes('BEGIN') && this.privateKey.includes('PRIVATE KEY')) {
       try {
         const signer = crypto.createSign('SHA256');
         signer.update(stringToSign);
@@ -67,15 +76,15 @@ export class SnapPaymentService {
       }
     }
 
-    // HMAC-SHA256 fallback for portal string key
+    // HMAC-SHA256 fallback for direct secret/string keys
     return crypto
-      .createHmac('sha256', this.privateKey)
+      .createHmac('sha256', this.privateKey || this.clientSecret || 'secret')
       .update(stringToSign)
       .digest('base64');
   }
 
   /**
-   * 2. Get or Fetch B2B Access Token
+   * 2. Get or Fetch B2B Access Token from ASPI / Bank Gateway
    */
   async getB2BAccessToken(): Promise<string> {
     const now = Date.now();
@@ -83,10 +92,17 @@ export class SnapPaymentService {
       return this.accessTokenCache.token;
     }
 
+    if (!this.clientKey) {
+      this.logger.warn('SNAP_CLIENT_KEY not set. Using local mock token.');
+      const fallbackToken = `snap_local_token_${Date.now()}`;
+      this.accessTokenCache = { token: fallbackToken, expiresAt: now + 900 * 1000 };
+      return fallbackToken;
+    }
+
     const timestamp = new Date().toISOString();
     const signature = this.generateB2BSignature(timestamp);
 
-    this.logger.log(`Fetching B2B Access Token for Client Id: ${this.clientKey}`);
+    this.logger.log(`Fetching B2B Access Token from ${this.baseUrl} for Client Id: ${this.clientKey}`);
 
     try {
       const response = await fetch(`${this.baseUrl}/api/v1.0/access-token/b2b`, {
@@ -103,18 +119,18 @@ export class SnapPaymentService {
         }),
       });
 
-      const data = await response.json();
-      if (data.accessToken) {
+      const data = await response.json().catch(() => null);
+      if (response.ok && data?.accessToken) {
         const expiresIn = parseInt(data.expiresIn || '900', 10);
         this.accessTokenCache = { token: data.accessToken, expiresAt: now + expiresIn * 1000 };
         return data.accessToken;
       }
-      this.logger.warn(`SNAP API response: ${JSON.stringify(data)}`);
+      this.logger.warn(`SNAP Auth API response [${response.status}]: ${JSON.stringify(data)}`);
     } catch (err) {
-      this.logger.warn(`SNAP Auth API request failed (${err.message}). Using local token fallback.`);
+      this.logger.warn(`SNAP Auth API request error (${err.message}).`);
     }
 
-    // Mock token fallback for local dev sandbox
+    // Fallback token for local sandbox dev
     const mockToken = `snap_token_${Date.now()}`;
     this.accessTokenCache = { token: mockToken, expiresAt: now + 900 * 1000 };
     return mockToken;
@@ -132,10 +148,12 @@ export class SnapPaymentService {
   ): string {
     const bodyString = typeof requestBody === 'string' ? requestBody : JSON.stringify(requestBody);
     const minifiedBody = crypto.createHash('sha256').update(bodyString).digest('hex').toLowerCase();
-
     const stringToSign = `${method.toUpperCase()}:${path}:${accessToken}:${minifiedBody}:${timestamp}`;
 
-    return crypto.createHmac('sha512', this.clientSecret).update(stringToSign).digest('base64');
+    return crypto
+      .createHmac('sha512', this.clientSecret || 'secret')
+      .update(stringToSign)
+      .digest('base64');
   }
 
   /**
@@ -172,6 +190,34 @@ export class SnapPaymentService {
 
     this.logger.log(`Creating SNAP VA ${vaNumber} for Invoice ${idInvoice}`);
 
+    // If live credentials configured and not forced mock mode, call live endpoint
+    if (!this.isMockMode && this.clientKey && this.baseUrl.startsWith('http')) {
+      try {
+        const response = await fetch(`${this.baseUrl}/v1.0/transfer-va/create-va`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+            'X-TIMESTAMP': timestamp,
+            'X-SIGNATURE': signature,
+            'X-PARTNER-ID': this.partnerServiceId,
+            'X-EXTERNAL-ID': idInvoice,
+            'CHANNEL-ID': 'SNAP_VA',
+          },
+          body: JSON.stringify(requestPayload),
+        });
+
+        const data = await response.json().catch(() => null);
+        if (response.ok && data) {
+          return data;
+        }
+        this.logger.warn(`ASPI VA Create returned status ${response.status}: ${JSON.stringify(data)}`);
+      } catch (err) {
+        this.logger.error(`Failed to call ASPI VA Create endpoint: ${err.message}`);
+      }
+    }
+
+    // Default standard response
     return {
       responseCode: '2002700',
       responseMessage: 'Successful',
@@ -186,7 +232,7 @@ export class SnapPaymentService {
   }
 
   /**
-   * 5. Create SNAP Dynamic QRIS
+   * 5. Create SNAP Dynamic QRIS with valid EMVCo CRC-16 Checksum
    */
   async createDynamicQris(idInvoice: string, nominal: number) {
     const token = await this.getB2BAccessToken();
@@ -212,9 +258,35 @@ export class SnapPaymentService {
       timestamp,
     );
 
-    const padNominal = nominal.toString();
-    const qrisContent = `00020101021226670016ID.GOV.DLH.LUMAJANG0118936009140000000000021552049399530336054${padNominal.length.toString().padStart(2, '0')}${padNominal}5802ID5912DLH LUMAJANG6008LUMAJANG61056731162190715${idInvoice}6304ABCD`;
+    // Call live ASPI QRIS endpoint if live environment
+    if (!this.isMockMode && this.clientKey && this.baseUrl.startsWith('http')) {
+      try {
+        const response = await fetch(`${this.baseUrl}/v1.0/qr/qr-mpm-generate`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+            'X-TIMESTAMP': timestamp,
+            'X-SIGNATURE': signature,
+            'X-PARTNER-ID': this.partnerServiceId,
+            'X-EXTERNAL-ID': idInvoice,
+            'CHANNEL-ID': 'SNAP_QRIS',
+          },
+          body: JSON.stringify(requestPayload),
+        });
 
+        const data = await response.json().catch(() => null);
+        if (response.ok && data?.qrContent) {
+          return data;
+        }
+        this.logger.warn(`ASPI QRIS Create returned status ${response.status}: ${JSON.stringify(data)}`);
+      } catch (err) {
+        this.logger.error(`Failed to call ASPI QRIS Create endpoint: ${err.message}`);
+      }
+    }
+
+    // Dynamic QRIS string with authentic EMVCo CRC-16 Checksum
+    const qrisContent = buildDynamicQrisString(idInvoice, nominal, this.merchantId);
     this.logger.log(`Generated SNAP Dynamic QRIS for Invoice ${idInvoice}`);
 
     return {
@@ -226,10 +298,74 @@ export class SnapPaymentService {
   }
 
   /**
-   * 6. Process Webhook Payment Notification from Bank
+   * 6. Validate incoming Webhook Signature from Bank/ASPI
    */
-  async processPaymentNotification(notification: any) {
+  verifyNotificationSignature(
+    headers: { signature?: string; timestamp?: string; partnerId?: string },
+    body: any,
+  ): boolean {
+    if (!this.verifySignatureEnabled) {
+      this.logger.log('Signature verification bypassed by SNAP_VERIFY_SIGNATURE=false configuration.');
+      return true;
+    }
+
+    const signature = headers.signature;
+    const timestamp = headers.timestamp;
+
+    if (!signature || !timestamp) {
+      this.logger.warn('Incoming payment notification missing X-SIGNATURE or X-TIMESTAMP headers.');
+      return false;
+    }
+
+    // 1. Asymmetric RSA verification with Bank's Public Key if available
+    if (this.publicKey.includes('BEGIN') && this.publicKey.includes('PUBLIC KEY')) {
+      try {
+        const bodyString = typeof body === 'string' ? body : JSON.stringify(body);
+        const minifiedBody = crypto.createHash('sha256').update(bodyString).digest('hex').toLowerCase();
+        const stringToSign = `POST:/api/payment/snap/notify:${minifiedBody}:${timestamp}`;
+
+        const verifier = crypto.createVerify('SHA256');
+        verifier.update(stringToSign);
+        verifier.end();
+        const isValid = verifier.verify(this.publicKey, signature, 'base64');
+        if (isValid) return true;
+      } catch (err) {
+        this.logger.error(`RSA Verification error: ${err.message}`);
+      }
+    }
+
+    // 2. Symmetric HMAC-SHA512 verification fallback
+    try {
+      const bodyString = typeof body === 'string' ? body : JSON.stringify(body);
+      const minifiedBody = crypto.createHash('sha256').update(bodyString).digest('hex').toLowerCase();
+      const stringToSign = `POST:/api/payment/snap/notify:${minifiedBody}:${timestamp}`;
+
+      const expectedHmac = crypto
+        .createHmac('sha512', this.clientSecret || 'secret')
+        .update(stringToSign)
+        .digest('base64');
+
+      return signature === expectedHmac;
+    } catch (err) {
+      this.logger.error(`HMAC Verification error: ${err.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * 7. Process Webhook Payment Notification from Bank
+   */
+  async processPaymentNotification(notification: any, headers: { signature?: string; timestamp?: string; partnerId?: string } = {}) {
     this.logger.log(`Received SNAP Payment Notification: ${JSON.stringify(notification)}`);
+
+    // Verify cryptographic signature if headers provided
+    if (headers.signature && !this.verifyNotificationSignature(headers, notification)) {
+      this.logger.error('Payment notification rejected: Invalid signature.');
+      return {
+        responseCode: '4012700',
+        responseMessage: 'Unauthorized: Invalid Signature',
+      };
+    }
 
     const idInvoice = notification.trxId || notification.partnerReferenceNo || notification.virtualAccountData?.trxId;
 
@@ -253,7 +389,7 @@ export class SnapPaymentService {
     inv.penerima = 'BANK_SNAP_GATEWAY';
     await this.invoiceRepo.save(inv);
 
-    // Record receipt
+    // Record receipt with idempotent handling
     const idKuitansi = `PAY-${idInvoice}`;
     const rawPaidTime = notification.paidTime || notification.transactionDate || notification.datetime;
     const paidTimeDate = rawPaidTime ? new Date(rawPaidTime) : new Date();
@@ -273,10 +409,13 @@ export class SnapPaymentService {
       });
       await this.pembayaranRepo.save(bayar);
     } else {
-      bayar.waktu_bayar = paidTimeDate;
-      if (bankRef) bayar.referensi_bank = bankRef;
+      if (bankRef && !bayar.referensi_bank) {
+        bayar.referensi_bank = bankRef;
+      }
       await this.pembayaranRepo.save(bayar);
     }
+
+    this.logger.log(`Payment confirmed for invoice ${idInvoice} (Kuitansi: ${idKuitansi})`);
 
     return {
       responseCode: '2002500',
@@ -290,3 +429,4 @@ export class SnapPaymentService {
     };
   }
 }
+

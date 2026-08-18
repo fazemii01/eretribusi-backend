@@ -4,6 +4,8 @@ import { Repository, Like } from 'typeorm';
 import { Invoice, InvoiceStatus } from '../../entities/invoice.entity';
 import { Pelanggan } from '../../entities/pelanggan.entity';
 import { Tarif } from '../../entities/tarif.entity';
+import { buildDynamicQrisString } from '../../common/qris-utils';
+
 
 @Injectable()
 export class TagihanService {
@@ -70,9 +72,9 @@ export class TagihanService {
   async findAll() {
     const pelangganList = await this.pelangganRepo.find();
     if (pelangganList.length === 0) {
-      await this.invoiceRepo.clear();
       return [];
     }
+
 
     // Use uppercase keys for case-insensitive matching
     const pelangganMap = new Map<string, Pelanggan>();
@@ -326,26 +328,9 @@ export class TagihanService {
     };
   }
 
-  // CRC-16/CCITT-FALSE Calculator for EMVCo QRIS Strings
-  private calculateCRC16(data: string): string {
-    let crc = 0xffff;
-    for (let i = 0; i < data.length; i++) {
-      crc ^= data.charCodeAt(i) << 8;
-      for (let j = 0; j < 8; j++) {
-        if ((crc & 0x8000) !== 0) {
-          crc = ((crc << 1) ^ 0x1021) & 0xffff;
-        } else {
-          crc = (crc << 1) & 0xffff;
-        }
-      }
-    }
-    return crc.toString(16).toUpperCase().padStart(4, '0');
-  }
-
-  // Dynamic QRIS EMVCo string payload generator (SNAP / Bank Jatim compatible mock)
-  private generateDynamicQrisPayload(idInvoice: string, nominal: number): string {
-    const padNominal = nominal.toString();
-    const basePayload = `00020101021226670016ID.GOV.DLH.LUMAJANG0118936009140000000000021552049399530336054${padNominal.length.toString().padStart(2, '0')}${padNominal}5802ID5912DLH LUMAJANG6008LUMAJANG61056731162190715${idInvoice}6304`;
-    return basePayload + this.calculateCRC16(basePayload);
+  // Dynamic QRIS EMVCo string payload generator (SNAP / Bank Jatim compatible)
+  generateDynamicQrisPayload(idInvoice: string, nominal: number): string {
+    return buildDynamicQrisString(idInvoice, nominal);
   }
 }
+

@@ -38,8 +38,11 @@ export class PelangganController {
     return this.pelangganService.remove(id);
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.KETUA, UserRole.ADMIN)
   @Post('sync-es')
   async syncEs() {
     return this.pelangganService.syncElasticsearch();
   }
 }
+

@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, Headers, HttpCode, HttpStatus } from '@nestjs/common';
 import { SnapPaymentService } from './snap-payment.service';
 
 @Controller('api/payment/snap')
@@ -17,7 +17,17 @@ export class SnapPaymentController {
 
   @HttpCode(HttpStatus.OK)
   @Post('notify')
-  async handlePaymentNotification(@Body() body: any) {
-    return this.snapService.processPaymentNotification(body);
+  async handlePaymentNotification(
+    @Body() body: any,
+    @Headers('x-signature') signature?: string,
+    @Headers('x-timestamp') timestamp?: string,
+    @Headers('x-partner-id') partnerId?: string,
+  ) {
+    return this.snapService.processPaymentNotification(body, {
+      signature,
+      timestamp,
+      partnerId,
+    });
   }
 }
+

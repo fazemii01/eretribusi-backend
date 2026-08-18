@@ -19,9 +19,9 @@ export class PembayaranService {
   async findAll() {
     const pelangganList = await this.pelangganRepo.find();
     if (pelangganList.length === 0) {
-      await this.pembayaranRepo.clear();
       return [];
     }
+
     // Use uppercase keys for case-insensitive matching
     const pelangganMap = new Map<string, Pelanggan>();
     pelangganList.forEach((p) => pelangganMap.set(p.id_pelanggan.toUpperCase(), p));

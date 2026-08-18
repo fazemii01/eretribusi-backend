@@ -14,6 +14,8 @@ export class TagihanController {
     private readonly tagihanCronService: TagihanCronService,
   ) {}
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.KETUA, UserRole.ADMIN, UserRole.PETUGAS)
   @Get('stats')
   async getDashboardStats(@Query('tahun') tahun: string) {
     return this.tagihanService.getDashboardStats(tahun);
@@ -29,16 +31,22 @@ export class TagihanController {
     return this.tagihanService.getUniqueYears();
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.KETUA, UserRole.ADMIN, UserRole.PETUGAS)
   @Get('year/:tahun')
   async findByYear(@Param('tahun') tahun: string) {
     return this.tagihanService.findByYear(tahun);
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.KETUA, UserRole.ADMIN, UserRole.PETUGAS)
   @Get('history/:idPelanggan')
   async getHistoryTagihan(@Param('idPelanggan') idPelanggan: string) {
     return this.tagihanService.getHistoryTagihan(idPelanggan);
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.KETUA, UserRole.ADMIN, UserRole.PETUGAS)
   @Get()
   async findAll() {
     return this.tagihanService.findAll();
@@ -51,9 +59,12 @@ export class TagihanController {
     return this.tagihanService.generateTagihanMassal(body.bulan, body.tahun);
   }
 
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.KETUA, UserRole.ADMIN)
   @Post('trigger-cron')
   async triggerCronManually(@Query('force') force?: string) {
     const isForce = force === 'true' || force === '1';
     return this.tagihanCronService.checkAndGenerateMonthlyInvoices(isForce);
   }
 }
+
